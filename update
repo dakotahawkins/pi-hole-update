@@ -1,0 +1,42 @@
+#!/usr/bin/sudo bash
+
+main() {
+    restart_if_required
+    run_apt update
+    run_apt full-upgrade
+    run_apt autoremove
+    sed -i '/nameserver 127.0.0.1/,${s//nameserver 8.8.8.8/;b};$q1' /etc/resolv.conf || error_exit "Changing nameserver failed."
+    pihole -up || error_exit "Failed to update pihole"
+    sed -i '/nameserver 8.8.8.8/,${s//nameserver 127.0.0.1/;b};$q1' /etc/resolv.conf || error_exit "Restoring nameserver failed."
+}
+
+run_apt() {
+    apt -y "$@" || error_exit "Failed to $@"
+    restart_if_required
+}
+
+restart_if_required() {
+    local check_file="/var/run/reboot-required"
+    [[ -f "$check_file" ]] && {
+        cat "$check_file"
+        IFS= read -r -s -n 1 -t 5 -p "Press any key to abort in the next 5 seconds." key && {
+            echo
+            error_exit "Aborting"
+        } || {
+            echo
+            reboot now || error_exit "Failed to reboot"
+        }
+    }
+}
+
+error_exit() {
+    echo "$1" >&2
+    echo
+    exit 1
+}
+
+set -m
+trap "" SIGINT
+main "$@"
+exit 0
+
